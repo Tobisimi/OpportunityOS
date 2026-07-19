@@ -1,0 +1,5 @@
+{
+  "senderEmail": "verified-sender@example.com",
+  "repositoryUrl": "https://github.com/OWNER/opportunity-scout",
+  "githubTokenSecretName": "opportunity-scout/github-token"
+}
