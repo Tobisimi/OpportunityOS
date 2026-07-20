@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
+    "backend",
     "infra",
     "shared",
     "web"
   ],
   "scripts": {
-    "build": "npm run build -w shared && npm run build -w infra && npm run build -w web",
-    "check": "npm run check -w shared && npm run check -w infra && npm run lint -w web && npm run build -w web",
+    "build": "npm run build -w shared && npm run build -w backend && npm run build -w infra && npm run build -w web",
+    "check": "npm run check -w shared && npm run check -w backend && npm run test -w backend && npm run check -w infra && npm run lint -w web && npm run build -w web",
     "deploy": "npm run deploy -w infra",
     "dev": "npm run dev -w web"
   },
