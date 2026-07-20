@@ -14,4 +14,5 @@ ukey.json
 uvals.json
 agentrun-*.json
 infra/scan-values.json
+infra/scheduled-event.json
 infra/cdk.context.json
