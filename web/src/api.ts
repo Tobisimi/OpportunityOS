@@ -3,7 +3,9 @@ import {
   opportunitySchema,
   userProfileSchema,
   type Opportunity,
+  type OpportunityCategory,
   type OpportunityStage,
+  type PrimaryGoal,
   type UserProfile,
 } from '@opportunity-scout/shared'
 
@@ -56,6 +58,8 @@ export interface ProfileInput {
   location: string
   remotePreference: UserProfile['remotePreference']
   experienceLevel: UserProfile['experienceLevel']
+  preferredCategories: OpportunityCategory[]
+  primaryGoal: PrimaryGoal
   scheduleEnabled: boolean
 }
 

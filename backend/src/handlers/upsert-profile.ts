@@ -4,7 +4,11 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider'
 import type { LambdaFunctionURLHandler } from 'aws-lambda'
 import { z } from 'zod'
-import { userProfileSchema } from '@opportunity-scout/shared'
+import {
+  opportunityCategories,
+  primaryGoals,
+  userProfileSchema,
+} from '@opportunity-scout/shared'
 import { DynamoScoutRepository } from '../aws.js'
 import {
   getBearerToken,
@@ -21,6 +25,11 @@ const requestSchema = z.object({
   location: z.string().trim().min(1).max(200),
   remotePreference: z.enum(['remote-only', 'remote-preferred', 'hybrid', 'onsite']),
   experienceLevel: z.enum(['student', 'entry', 'mid', 'senior', 'expert']),
+  preferredCategories: z
+    .array(z.enum(opportunityCategories))
+    .max(opportunityCategories.length)
+    .default([]),
+  primaryGoal: z.enum(primaryGoals).default('explore'),
   scheduleEnabled: z.boolean().default(true),
 })
 

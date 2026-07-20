@@ -10,7 +10,11 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'
 import {
+  describeEffort,
+  describeUrgency,
+  nextAction,
   opportunitySchema,
+  successProbability,
   userProfileSchema,
   type AgentRun,
   type Opportunity,
@@ -71,7 +75,7 @@ export class DynamoScoutRepository implements ScoutRepository {
         TableName: this.usersTableName,
         Key: { userId: profile.userId },
         UpdateExpression:
-          'SET #email = :email, #role = :role, #interests = :interests, #location = :location, #remotePreference = :remotePreference, #experienceLevel = :experienceLevel, #scheduleEnabled = :scheduleEnabled, #engagementStats = if_not_exists(#engagementStats, :engagementStats), #createdAt = if_not_exists(#createdAt, :createdAt), #updatedAt = :updatedAt',
+          'SET #email = :email, #role = :role, #interests = :interests, #location = :location, #remotePreference = :remotePreference, #experienceLevel = :experienceLevel, #preferredCategories = :preferredCategories, #primaryGoal = :primaryGoal, #scheduleEnabled = :scheduleEnabled, #engagementStats = if_not_exists(#engagementStats, :engagementStats), #createdAt = if_not_exists(#createdAt, :createdAt), #updatedAt = :updatedAt',
         ExpressionAttributeNames: {
           '#email': 'email',
           '#role': 'role',
@@ -79,6 +83,8 @@ export class DynamoScoutRepository implements ScoutRepository {
           '#location': 'location',
           '#remotePreference': 'remotePreference',
           '#experienceLevel': 'experienceLevel',
+          '#preferredCategories': 'preferredCategories',
+          '#primaryGoal': 'primaryGoal',
           '#scheduleEnabled': 'scheduleEnabled',
           '#engagementStats': 'engagementStats',
           '#createdAt': 'createdAt',
@@ -91,6 +97,8 @@ export class DynamoScoutRepository implements ScoutRepository {
           ':location': profile.location,
           ':remotePreference': profile.remotePreference,
           ':experienceLevel': profile.experienceLevel,
+          ':preferredCategories': profile.preferredCategories,
+          ':primaryGoal': profile.primaryGoal,
           ':scheduleEnabled': profile.scheduleEnabled,
           ':engagementStats': profile.engagementStats,
           ':createdAt': profile.createdAt,
@@ -277,15 +285,25 @@ const escapeHtml = (value: string): string =>
       ] ?? character,
   )
 
+const renderPriorityBlock = (opportunity: Opportunity, now: Date): string => {
+  const urgency = describeUrgency(opportunity.deadline, now)
+  const effort = describeEffort(opportunity.scores.timeRequiredHours)
+  const odds = successProbability(opportunity)
+  return [
+    '<div style="border:1px solid #FF4FA3;border-radius:6px;padding:16px;margin:16px 0;">',
+    '<p style="margin:0 0 6px;color:#FF4FA3;font-size:12px;letter-spacing:0.08em;">&rarr; PRIORITISE THIS</p>',
+    `<h2 style="margin:0 0 8px;">${escapeHtml(opportunity.title)}</h2>`,
+    `<p style="margin:0 0 8px;color:#8B98A8;">${escapeHtml(opportunity.fitReasoning)}</p>`,
+    `<p style="margin:0 0 8px;font-size:13px;">Fit ${opportunity.fitScore}/100 &middot; ${escapeHtml(urgency.label)} &middot; ${escapeHtml(effort.label)} (${escapeHtml(effort.detail)}) &middot; ${odds}% odds</p>`,
+    `<p style="margin:0;"><strong>Next step:</strong> ${escapeHtml(nextAction(opportunity))}</p>`,
+    '</div>',
+  ].join('')
+}
+
 const renderDigest = (content: DigestContent): string => {
-  const opportunityItems = content.newOpportunities
-    .map(
-      (opportunity) =>
-        `<li><strong>${escapeHtml(opportunity.title)}</strong> — fit ${opportunity.fitScore}/100<br>${escapeHtml(opportunity.summary)}</li>`,
-    )
-    .join('')
+  const now = new Date()
   const recommendation = content.recommendation
-    ? `<p><strong>Prioritize this week:</strong> ${escapeHtml(content.recommendation.title)}</p>`
+    ? renderPriorityBlock(content.recommendation, now)
     : ''
   const nudges =
     content.nudges.length > 0
@@ -293,8 +311,28 @@ const renderDigest = (content: DigestContent): string => {
           .map((nudge) => `<li>${escapeHtml(nudge)}</li>`)
           .join('')}</ul>`
       : ''
+  const rest = content.newOpportunities.filter(
+    (opportunity) => opportunity.opportunityId !== content.recommendation?.opportunityId,
+  )
+  const restList =
+    rest.length > 0
+      ? `<h2>Also detected this run</h2><ul>${rest
+          .map(
+            (opportunity) =>
+              `<li><strong>${escapeHtml(opportunity.title)}</strong> — fit ${opportunity.fitScore}/100<br>${escapeHtml(opportunity.summary)}</li>`,
+          )
+          .join('')}</ul>`
+      : ''
 
-  return `<h1>Scan complete. ${content.newOpportunities.length} new signals detected.</h1>${recommendation}<ul>${opportunityItems}</ul>${nudges}`
+  return [
+    `<h1>Scan complete. ${content.newOpportunities.length} new signal${
+      content.newOpportunities.length === 1 ? '' : 's'
+    } detected.</h1>`,
+    '<p style="color:#8B98A8;">Your scout already did the thinking. Here is what deserves your attention.</p>',
+    recommendation,
+    nudges,
+    restList,
+  ].join('')
 }
 
 export class SesDigestNotifier implements DigestNotifier {

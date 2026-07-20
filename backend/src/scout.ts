@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
   agentRunSchema,
+  buildNudges,
+  chooseRecommendation,
   opportunitySchema,
   type AgentRun,
   type NormalizedCandidate,
@@ -65,49 +67,6 @@ const deduplicateCandidates = (candidates: NormalizedCandidate[]): NormalizedCan
     seen.add(key)
     return true
   })
-}
-
-const deadlineUrgency = (deadline: string | null, now: Date): number => {
-  if (!deadline) return 0
-  const days = Math.ceil(
-    (new Date(`${deadline}T23:59:59.999Z`).valueOf() - now.valueOf()) / 86_400_000,
-  )
-  if (days < 0) return -100
-  if (days <= 3) return 30
-  if (days <= 7) return 20
-  if (days <= 14) return 10
-  return 0
-}
-
-export const chooseRecommendation = (
-  opportunities: Opportunity[],
-  now: Date,
-): Opportunity | null =>
-  opportunities
-    .filter((opportunity) => ['saved', 'interested'].includes(opportunity.stage))
-    .map((opportunity) => ({
-      opportunity,
-      rank:
-        opportunity.fitScore +
-        deadlineUrgency(opportunity.deadline, now) -
-        Math.min(20, opportunity.scores.timeRequiredHours / 4),
-    }))
-    .sort((left, right) => right.rank - left.rank)[0]?.opportunity ?? null
-
-const buildNudges = (opportunities: Opportunity[], now: Date): string[] => {
-  const today = now.toISOString().slice(0, 10)
-  const horizon = new Date(now.valueOf() + 7 * 86_400_000).toISOString().slice(0, 10)
-
-  return opportunities.flatMap((opportunity) =>
-    opportunity.checklist
-      .filter(
-        (item) => !item.completed && item.dueDate >= today && item.dueDate <= horizon,
-      )
-      .map(
-        (item) =>
-          `Checklist item '${item.task}' for ${opportunity.title} is due ${item.dueDate}.`,
-      ),
-  )
 }
 
 const runForUser = async (
