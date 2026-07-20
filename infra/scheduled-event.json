@@ -1,0 +1,11 @@
+{
+  "version": "0",
+  "id": "manual-validation-run",
+  "detail-type": "OpportunityScoutScheduledRun",
+  "source": "opportunity-scout.schedule",
+  "account": "280196252212",
+  "time": "2026-07-20T19:45:00Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {}
+}

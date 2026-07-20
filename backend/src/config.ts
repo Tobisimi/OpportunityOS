@@ -6,9 +6,29 @@ const required = (name: string): string => {
   return value
 }
 
+const resolveAnalysisMode = (): 'gemini' | 'bedrock' | 'mock' => {
+  const mode = process.env.ANALYSIS_MODE?.trim().toLowerCase()
+  if (mode === 'gemini') return 'gemini'
+  if (mode === 'bedrock') return 'bedrock'
+  return 'mock'
+}
+
+const resolvePositiveInt = (name: string, fallback: number): number => {
+  const raw = process.env[name]?.trim()
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
 export const runtimeConfig = {
-  analysisMode: process.env.ANALYSIS_MODE === 'bedrock' ? 'bedrock' : 'mock',
+  analysisMode: resolveAnalysisMode(),
   bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'amazon.nova-lite-v1:0',
+  geminiModelId: process.env.GEMINI_MODEL_ID?.trim() || 'gemini-2.5-flash-lite',
+  geminiApiKey: () => required('GEMINI_API_KEY'),
+  // The scout only spends its analysis budget on the highest-signal unseen
+  // candidates per run. Keeps free-tier providers within daily request caps and
+  // matches the product goal of surfacing what matters instead of dumping.
+  maxAnalysesPerRun: resolvePositiveInt('MAX_ANALYSES_PER_RUN', 12),
   usersTableName: () => required('USERS_TABLE_NAME'),
   opportunitiesTableName: () => required('OPPORTUNITIES_TABLE_NAME'),
   agentRunsTableName: () => required('AGENT_RUNS_TABLE_NAME'),

@@ -35,6 +35,12 @@ export class OpportunityScoutStack extends Stack {
     const createSesIdentity =
       (this.node.tryGetContext('createSesIdentity') as string | undefined) !== 'false'
     const bedrockModelId = 'amazon.nova-lite-v1:0'
+    const geminiApiKey = (this.node.tryGetContext('geminiApiKey') as string | undefined)?.trim()
+    const geminiModelId =
+      (this.node.tryGetContext('geminiModelId') as string | undefined)?.trim() ||
+      'gemini-2.5-flash-lite'
+    const maxAnalysesPerRun =
+      (this.node.tryGetContext('maxAnalysesPerRun') as string | undefined)?.trim() || '12'
 
     Tags.of(this).add('Application', 'OpportunityScout')
     Tags.of(this).add('ManagedBy', 'AWS-CDK')
@@ -133,8 +139,11 @@ export class OpportunityScoutStack extends Stack {
     }
 
     const commonEnvironment = {
-      ANALYSIS_MODE: 'mock',
+      ANALYSIS_MODE: geminiApiKey ? 'gemini' : 'mock',
       BEDROCK_MODEL_ID: bedrockModelId,
+      GEMINI_MODEL_ID: geminiModelId,
+      MAX_ANALYSES_PER_RUN: maxAnalysesPerRun,
+      ...(geminiApiKey ? { GEMINI_API_KEY: geminiApiKey } : {}),
       USERS_TABLE_NAME: usersTable.tableName,
       OPPORTUNITIES_TABLE_NAME: opportunitiesTable.tableName,
       AGENT_RUNS_TABLE_NAME: agentRunsTable.tableName,

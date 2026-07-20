@@ -172,7 +172,126 @@ export class BedrockOpportunityAnalyzer implements OpportunityAnalyzer {
   }
 }
 
+const ANALYSIS_SCHEMA_INSTRUCTIONS = [
+  'Return only valid JSON matching the supplied schema. Do not use markdown or code fences.',
+  'Use only the opportunity and user profile provided. Never invent missing requirements or deadlines.',
+  'Schema: {"category":"hackathon|competition|scholarship|grant|fellowship|conference|other","summary":"2-3 plain sentences","fitScore":0,"fitReasoning":"1-2 sentences citing specific profile details","scores":{"domainFit":0,"innovationLevel":0,"careerValue":0,"difficulty":0,"timeRequiredHours":0,"travelRequired":false,"fundingAvailable":false,"fundingNotes":"optional string, required only when fundingAvailable is true"},"deadline":"YYYY-MM-DD or null","checklist":[{"task":"string","dueDate":"YYYY-MM-DD","completed":false}]}',
+]
+
+const buildAnalysisPrompt = (
+  candidate: NormalizedCandidate,
+  profile: UserProfile,
+): string =>
+  [
+    ...ANALYSIS_SCHEMA_INSTRUCTIONS,
+    `User profile: ${JSON.stringify(profile)}`,
+    `Opportunity: ${JSON.stringify({ ...candidate, rawText: candidate.rawText.slice(0, 12_000) })}`,
+  ].join('\n\n')
+
+const stripJsonFences = (text: string): string =>
+  text
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/, '')
+    .trim()
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Free-tier fallbacks. Newer keys can't use some older model ids ("no longer
+ * available to new users" 404s), so on a 404 we advance to the next candidate
+ * and pin whichever one works for the rest of the run.
+ */
+const GEMINI_FALLBACK_MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-flash-latest',
+  'gemini-2.0-flash',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash',
+]
+
+/**
+ * The free tier caps requests-per-minute hard (as low as 5 for some models),
+ * so space calls out. A module-level gate serialises spacing across every
+ * candidate analysed within a single Lambda invocation.
+ */
+const GEMINI_MIN_INTERVAL_MS = 4_500
+let geminiNextAvailableAt = 0
+
+const throttleGemini = async (): Promise<void> => {
+  const now = Date.now()
+  const waitFor = geminiNextAvailableAt - now
+  geminiNextAvailableAt = Math.max(now, geminiNextAvailableAt) + GEMINI_MIN_INTERVAL_MS
+  if (waitFor > 0) await sleep(waitFor)
+}
+
+export class GeminiOpportunityAnalyzer implements OpportunityAnalyzer {
+  private models: string[]
+
+  constructor(
+    private readonly apiKey = runtimeConfig.geminiApiKey(),
+    preferredModel = runtimeConfig.geminiModelId,
+  ) {
+    this.models = [
+      preferredModel,
+      ...GEMINI_FALLBACK_MODELS.filter((model) => model !== preferredModel),
+    ]
+  }
+
+  async analyze(
+    candidate: NormalizedCandidate,
+    profile: UserProfile,
+  ): Promise<AnalysisResult> {
+    const prompt = buildAnalysisPrompt(candidate, profile)
+    let lastError: Error | null = null
+
+    for (let index = 0; index < this.models.length; index += 1) {
+      const model = this.models[index]!
+      await throttleGemini()
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': this.apiKey,
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+          }),
+        },
+      )
+
+      if (response.status === 404) {
+        lastError = new Error(`Gemini model ${model} is unavailable for this key.`)
+        continue
+      }
+      if (!response.ok) {
+        throw new Error(`Gemini request failed (${response.status}): ${await response.text()}`)
+      }
+
+      if (index > 0) {
+        this.models = [model, ...this.models.filter((entry) => entry !== model)]
+      }
+      const payload = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      }
+      const text = payload.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text
+      if (!text) {
+        throw new Error('Gemini returned no text content.')
+      }
+      return analysisResultSchema.parse(JSON.parse(stripJsonFences(text)))
+    }
+
+    throw lastError ?? new Error('No Gemini model was available for this API key.')
+  }
+}
+
 export const createAnalyzer = (
   mode: AnalysisMode = runtimeConfig.analysisMode,
-): OpportunityAnalyzer =>
-  mode === 'bedrock' ? new BedrockOpportunityAnalyzer() : new MockOpportunityAnalyzer()
+): OpportunityAnalyzer => {
+  if (mode === 'gemini') return new GeminiOpportunityAnalyzer()
+  if (mode === 'bedrock') return new BedrockOpportunityAnalyzer()
+  return new MockOpportunityAnalyzer()
+}

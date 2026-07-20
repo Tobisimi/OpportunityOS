@@ -8,3 +8,10 @@ coverage/
 *.log
 .DS_Store
 Thumbs.db
+out.json
+qkey.json
+ukey.json
+uvals.json
+agentrun-*.json
+infra/scan-values.json
+infra/cdk.context.json

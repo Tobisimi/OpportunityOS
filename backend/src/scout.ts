@@ -10,6 +10,7 @@ import {
   type UserProfile,
 } from '@opportunity-scout/shared'
 import type { OpportunityAnalyzer } from './analysis.js'
+import { runtimeConfig } from './config.js'
 import type { DiscoveryConnector } from './connectors.js'
 
 export interface ScoutRepository {
@@ -69,6 +70,30 @@ const deduplicateCandidates = (candidates: NormalizedCandidate[]): NormalizedCan
   })
 }
 
+const FUNDING_SIGNAL = /\b(fund|grant|prize|hackathon|fellowship|scholar|award|bounty|stipend)/i
+
+/**
+ * Cheap, deterministic pre-ranking so the limited analysis budget is spent on
+ * the candidates most likely to matter to this user (final scoring is still the
+ * analyzer's job). Rewards profile-interest keyword hits and funding signals.
+ */
+const prioritizeForAnalysis = (
+  candidates: NormalizedCandidate[],
+  profile: UserProfile,
+): NormalizedCandidate[] => {
+  const interests = profile.interests.map((interest) => interest.trim().toLowerCase()).filter(Boolean)
+  const relevance = (candidate: NormalizedCandidate): number => {
+    const haystack = `${candidate.title} ${candidate.rawText}`.toLowerCase()
+    let score = 0
+    for (const interest of interests) {
+      if (haystack.includes(interest)) score += 2
+    }
+    if (FUNDING_SIGNAL.test(haystack)) score += 1
+    return score
+  }
+  return [...candidates].sort((a, b) => relevance(b) - relevance(a))
+}
+
 const runForUser = async (
   profile: UserProfile,
   candidates: NormalizedCandidate[],
@@ -94,9 +119,11 @@ const runForUser = async (
     const unseen = candidates.filter(
       (candidate) => !existingUrls.has(canonicalizeUrl(candidate.sourceUrl)),
     )
+    const budget = runtimeConfig.maxAnalysesPerRun
+    const toAnalyze = prioritizeForAnalysis(unseen, profile).slice(0, budget)
     const created: Opportunity[] = []
 
-    for (const candidate of unseen) {
+    for (const candidate of toAnalyze) {
       try {
         const analysis = await dependencies.analyzer.analyze(candidate, profile)
         const canonicalUrl = canonicalizeUrl(candidate.sourceUrl)
