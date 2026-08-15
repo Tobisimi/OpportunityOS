@@ -3,6 +3,7 @@ import type { LambdaFunctionURLHandler } from 'aws-lambda'
 import { z } from 'zod'
 import { normalizedCandidateSchema, opportunitySchema } from '@opportunity-scout/shared'
 import { createAnalyzer } from '../analysis.js'
+// Analyzer revision: bedrock-int-coerce-1
 import { DynamoScoutRepository } from '../aws.js'
 import {
   handleHttpError,

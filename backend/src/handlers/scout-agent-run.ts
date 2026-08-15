@@ -7,6 +7,7 @@ import { executeScout } from '../scout.js'
 export const handler = async (
   event: EventBridgeEvent<'OpportunityScoutScheduledRun', Record<string, never>>,
 ): Promise<void> => {
+  // Analyzer revision: bedrock-int-coerce-1
   if (event['detail-type'] !== 'OpportunityScoutScheduledRun') {
     throw new Error(`Unsupported event detail type: ${event['detail-type']}`)
   }

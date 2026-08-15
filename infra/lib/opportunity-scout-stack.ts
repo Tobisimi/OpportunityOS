@@ -138,11 +138,13 @@ export class OpportunityScoutStack extends Stack {
       })
     }
 
+    const analysisMode = geminiApiKey ? 'gemini' : 'bedrock'
     const commonEnvironment = {
-      ANALYSIS_MODE: geminiApiKey ? 'gemini' : 'mock',
+      ANALYSIS_MODE: analysisMode,
       BEDROCK_MODEL_ID: bedrockModelId,
       GEMINI_MODEL_ID: geminiModelId,
       MAX_ANALYSES_PER_RUN: maxAnalysesPerRun,
+      ANALYZER_REVISION: 'bedrock-int-coerce-1',
       ...(geminiApiKey ? { GEMINI_API_KEY: geminiApiKey } : {}),
       USERS_TABLE_NAME: usersTable.tableName,
       OPPORTUNITIES_TABLE_NAME: opportunitiesTable.tableName,
@@ -217,6 +219,19 @@ export class OpportunityScoutStack extends Stack {
         },
       }),
     )
+
+    const grantBedrockInvoke = (fn: lambda.Function) =>
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+          resources: [
+            `arn:aws:bedrock:${this.region}::foundation-model/${bedrockModelId}`,
+            `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+          ],
+        }),
+      )
+    grantBedrockInvoke(scoutAgentRun)
+    grantBedrockInvoke(extractFromPastedContent)
 
     grantTableActions(refineQuery, opportunitiesTable, ['dynamodb:Query'])
     grantTableActions(extractFromPastedContent, usersTable, ['dynamodb:GetItem'])
@@ -301,6 +316,7 @@ export class OpportunityScoutStack extends Stack {
 
     new CfnOutput(this, 'AwsRegion', { value: this.region })
     new CfnOutput(this, 'AmplifyWebUrl', { value: amplifyWebOrigin })
+    new CfnOutput(this, 'AnalysisMode', { value: analysisMode })
     new CfnOutput(this, 'BedrockModelId', { value: bedrockModelId })
     new CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId })
     new CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId })

@@ -168,7 +168,7 @@ export class BedrockOpportunityAnalyzer implements OpportunityAnalyzer {
       throw new Error('Bedrock returned no text content.')
     }
 
-    return analysisResultSchema.parse(JSON.parse(text))
+    return analysisResultSchema.parse(coerceAnalysisPayload(JSON.parse(stripJsonFences(text))))
   }
 }
 
@@ -194,6 +194,34 @@ const stripJsonFences = (text: string): string =>
     .replace(/^```(?:json)?/i, '')
     .replace(/```$/, '')
     .trim()
+
+const coerceAnalysisPayload = (payload: unknown): unknown => {
+  if (!payload || typeof payload !== 'object') return payload
+  const record = payload as Record<string, unknown>
+  const scores =
+    record.scores && typeof record.scores === 'object'
+      ? (record.scores as Record<string, unknown>)
+      : null
+  const asInt = (value: unknown): unknown =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : value
+
+  return {
+    ...record,
+    fitScore: asInt(record.fitScore),
+    ...(scores
+      ? {
+          scores: {
+            ...scores,
+            domainFit: asInt(scores.domainFit),
+            innovationLevel: asInt(scores.innovationLevel),
+            careerValue: asInt(scores.careerValue),
+            difficulty: asInt(scores.difficulty),
+            timeRequiredHours: asInt(scores.timeRequiredHours),
+          },
+        }
+      : {}),
+  }
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -281,7 +309,9 @@ export class GeminiOpportunityAnalyzer implements OpportunityAnalyzer {
       if (!text) {
         throw new Error('Gemini returned no text content.')
       }
-      return analysisResultSchema.parse(JSON.parse(stripJsonFences(text)))
+      return analysisResultSchema.parse(
+        coerceAnalysisPayload(JSON.parse(stripJsonFences(text))),
+      )
     }
 
     throw lastError ?? new Error('No Gemini model was available for this API key.')
